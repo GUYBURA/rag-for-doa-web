@@ -2,7 +2,11 @@ import { checkRate } from "@/lib/rate-limit";
 import type { AskResponse } from "@/lib/types";
 
 const MAX_QUESTION_CHARS = 500;
-const BACKEND_TIMEOUT_MS = 60_000;
+// Typical answer is 15-30 s (answer model, then a judge call, retried once on
+// a failed check). 60 s cut off real answers; the platform limit has to be at
+// least as long as the fetch timeout or the platform kills us first.
+const BACKEND_TIMEOUT_MS = 90_000;
+export const maxDuration = 100;
 
 function fail(status: number, message: string, headers?: Record<string, string>) {
   return Response.json({ error: message }, { status, headers });
@@ -48,6 +52,9 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("backend unreachable", err);
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      return fail(504, "ระบบใช้เวลาตอบนานเกินไป ลองถามอีกครั้ง หรือถามให้สั้นและเจาะจงขึ้น");
+    }
     return fail(502, "เชื่อมต่อระบบตอบคำถามไม่ได้ ลองใหม่อีกครั้ง");
   }
 
