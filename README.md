@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# rag-for-doa-web
 
-## Getting Started
+Front end for [rag-for-doa](https://github.com/GUYBURA/rag-for-doa): a Thai-language Q&A
+system over the Department of Agriculture's pesticide guidance handbooks. Live at
+https://rag-for-doa-web.vercel.app
 
-First, run the development server:
+Ask a question in Thai. The answer comes only from the current edition of the handbook and
+carries its sources: document, edition year (พ.ศ.) and page. When the handbook does not
+support an answer, the page says so instead of guessing.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## How it fits together
+
+```
+browser  ->  Next.js route handler  ->  Cloud Run (rag-for-doa)  ->  Cloud SQL + OpenRouter
+          /api/ask  (holds the key)      POST /ask, X-API-Key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- `app/page.tsx` — the page: question box, example questions, answer with `[n]` markers that
+  link to source cards, and a separate card for a refusal (a refusal is a correct outcome,
+  not an error).
+- `app/api/ask/route.ts` — the only place that talks to the backend. It validates the
+  question (non-blank, at most 500 characters), applies a small per-IP limit, forwards with
+  the API key, and waits up to 90 s. Backend errors are mapped to short Thai messages and the
+  backend's body is never forwarded.
+- `lib/rate-limit.ts` — in-memory per-IP limit (5 per minute). A courtesy limit only; the
+  real limits are the backend's per-key rate limit and the spending limit at the model
+  provider.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**The API key never reaches the browser.** It lives in `RAG_API_KEY`, read by the route
+handler on the server. Do not rename it with a `NEXT_PUBLIC_` prefix: that would ship it to
+every visitor.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run locally
 
-## Learn More
+```bash
+cp .env.example .env.local     # then set RAG_API_KEY
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Purpose |
+| --- | --- |
+| `RAG_API_URL` | Base URL of the backend (no trailing slash) |
+| `RAG_API_KEY` | One of the backend's `API_KEYS`; server-side only |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Pushing to `main` deploys on Vercel. Set `RAG_API_URL` and `RAG_API_KEY` in the project's
+environment variables. The route sets `maxDuration = 100`, so the Vercel function limit has
+to allow at least that.
 
-## Deploy on Vercel
+Built with Next.js 16 (App Router), React 19 and Noto Sans Thai.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Disclaimer
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Answers are drawn from the handbooks and checked against them, but check the original
+document before applying a chemical in the field.
